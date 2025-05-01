@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sketch & Voice Recorder (RecordRTC)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: #fff8e7;
+    }
+    canvas {
+      border: 2px solid #333;
+      background: #fff;
+      display: block;
+      margin: 0 auto 20px;
+      touch-action: none;
+    }
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      margin: 10px;
+    }
+    video {
+      display: block;
+      margin: 20px auto;
+      max-width: 100%;
+    }
+    a {
+      display: none;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sketch & Voice Recorder (RecordRTC)</h1>
+  <canvas id="drawingCanvas" width="600" height="400"></canvas>
+  <button onclick="startRecording()">Start Recording 🎤</button>
+  <button onclick="stopRecording()" disabled id="stopBtn">Stop Recording ■</button>
+  <video id="playback" controls></video>
+  <a id="downloadLink" download="recording.webm">Download Recording 🎬</a>
+
+  <!-- Load RecordRTC -->
+  <script src="https://cdn.webrtc-experiment.com/RecordRTC.min.js"></script>
+  <script>
+    const canvas = document.getElementById("drawingCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Initial canvas setup
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#222";
+
+    let isDrawing = false;
+
+    function getPosition(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left,
+        y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+      };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getPosition(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      const pos = getPosition(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    }
+
+    function stopDraw() {
+      isDrawing = false;
+    }
+
+    // Canvas drawing listeners
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", stopDraw);
+    canvas.addEventListener("mouseleave", stopDraw);
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", stopDraw);
+
+    let recorder;
+    let audioStream, canvasStream;
+
+    async function startRecording() {
+      const stopBtn = document.getElementById("stopBtn");
+
+      try {
+        // ✅ Check browser support
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert("Your browser does not support audio recording.");
+          return;
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasMic = devices.some(d => d.kind === 'audioinput');
+
+        if (!hasMic) {
+          alert("No microphone found. Please connect a mic and try again.");
+          return;
+        }
+
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        canvasStream = canvas.captureStream(30);
+
+        recorder = RecordRTC([canvasStream, audioStream], { type: 'video' });
+        recorder.startRecording();
+        stopBtn.disabled = false;
+      } catch (err) {
+        alert("🚫 Microphone access was blocked or unavailable.\nPlease check your browser permissions and reload the page.");
+        console.error("Mic error:", err);
+      }
+    }
+
+    function stopRecording() {
+      recorder.stopRecording(() => {
+        const blob = recorder.getBlob();
+        const url = URL.createObjectURL(blob);
+
+        const video = document.getElementById("playback");
+        const link = document.getElementById("downloadLink");
+
+        video.src = url;
+        link.href = url;
+        link.style.display = "inline";
+      });
+
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
+
+      document.getElementById("stopBtn").disabled = true;
+    }
+  </script>
+</body>
+</html>
